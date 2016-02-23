@@ -1,0 +1,20 @@
+<launch>
+
+  <node name="pcl_transform_client" pkg="pcl_transform" type="pcl_transform_client" output="screen">
+    <param name="to_frame" value="/world" type="str"/>
+    <param name="input_topic" value="/detected_objects" type="str"/>
+  </node>
+
+  <node   
+      name="calc_grasppoints_svm_action_server" 
+    pkg="haf_grasping" 
+    type="calc_grasppoints_action_server">        
+  </node>
+  <node   
+      name="calc_grasppoints_svm_action_client" 
+    pkg="haf_grasping" 
+    type="calc_grasppoints_client_sim"
+    output="screen">        
+  </node>
+
+</launch>

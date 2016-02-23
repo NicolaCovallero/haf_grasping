@@ -1,0 +1,34 @@
+{
+	"build_systems":
+	[
+		{
+			"cmd":
+			[
+				"ls"
+			],
+			"name": "List"
+		}
+	],
+	"folders":
+	[
+		{
+			"folder_exclude_patterns":
+			[
+				"backup"
+			],
+			"path": "src"
+		},
+		{
+			"file_exclude_patterns":
+			[
+				"*.css"
+			],
+			"name": "Documentation",
+			"path": "docs"
+		}
+	],
+	"settings":
+	{
+		"tab_size": 2
+	}
+}

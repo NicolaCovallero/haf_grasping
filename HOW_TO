@@ -1,0 +1,28 @@
+
+
+To launch haf_grasping:
+
+$ roslaunch grasp_simulation spawm_kinect.launch
+
+then launch 
+
+$ roslaunch haf_grasping haf_grasping_all2.launch
+
+be carefull to set the input topic correctly (input_pc_topic)
+
+The previous is to launch with a fixed "workspace". 
+To detect for each object the grasping point:
+
+$ roslaunch grasp_simulation spawm_kinect.launch
+
+$ roslaunch haf_grasping haf_simulation.launch
+
+$ roslaunch haf_grasping rviz.launch
+
+--------- 2 kinects -----------------
+
+$ roslaunch grasp_simulation spawm_2kinects.launch
+
+$ roslaunch haf_grasping haf_simulation2.launch
+
+$ roslaunch haf_grasping rviz.launch
