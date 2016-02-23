@@ -67,7 +67,7 @@ ros::Publisher grasp_poses_pub, grasp_poses_closing_direction_pub,
                grasps_data_pub, segmented_objects_pub;
 
 //-------------------------------------------------
-const std::string INPUT_TOPIC = "/camera/depth/points";
+const std::string INPUT_TOPIC = "/camera/depth_registered/points";
 const std::string BASE_FRAME = "/world";
 const double OPENING_WIDTH_SCALE = 1;
 
@@ -96,7 +96,7 @@ public:
 	ros::ServiceServer srv_set_approach_vector;			// service to set approach vector for grasping (only direction hand is approaching, not roll angle)
 	ros::ServiceServer srv_set_show_only_best_grasp;	// service to set show_only_best_grasp bool variable
 	ros::ServiceServer srv_set_gripper_width;			// service to set factor f that is used for scaling point cloud to imitate pre-gripper opening width of 1/f
-	geometry_msgs::Point graspsearchcenter;				// center for searching for grasps
+	geometry_msgs::Point grasp_search_center;				// center for searching for grasps
 	geometry_msgs::Vector3 approach_vector;				// defines the direction from where a grasp should be executed
 	int grasp_search_size_x;		// [cm]	// the size (x direction) where grasps are really calculated (in each direction 7cm more are needed for feature calculation!
 	int grasp_search_size_y;			// the size (y direction) where grasps are really calculated (in each direction 7cm more are needed for feature calculation!
@@ -122,7 +122,7 @@ public:
 	{
      	this->nh_ = nh_;
 
-		this->graspsearchcenter.x = this->graspsearchcenter.y = this->graspsearchcenter.z = 0.0;	//default values
+		this->grasp_search_center.x = this->grasp_search_center.y = this->grasp_search_center.z = 0.0;	//default values
 		
 		
 		this->approach_vector.x = this->approach_vector.y = 0.0;
@@ -179,7 +179,7 @@ bool CCalcGrasppointsClient::get_grasp_cb(const sensor_msgs::PointCloud2& pc_in)
 	haf_grasping::CalcGraspPointsServerGoal goal;
 	goal.graspinput.input_pc = 	pc_in;
 
-	goal.graspinput.grasp_area_center = this->graspsearchcenter;
+	goal.graspinput.grasp_area_center = this->grasp_search_center;
 
 	//set grasp approach vector
 	goal.graspinput.approach_vector = this->approach_vector;
@@ -260,9 +260,9 @@ bool CCalcGrasppointsClient::set_grasp_center(haf_grasping::GraspSearchCenter::R
 		haf_grasping::GraspSearchCenter::Response &res)
 {
 	//set grasp search center
-	this->graspsearchcenter.x = req.graspsearchcenter.x;
-	this->graspsearchcenter.y = req.graspsearchcenter.y;
-	this->graspsearchcenter.z = req.graspsearchcenter.z;
+	this->grasp_search_center.x = req.graspsearchcenter.x;
+	this->grasp_search_center.y = req.graspsearchcenter.y;
+	this->grasp_search_center.z = req.graspsearchcenter.z;
 	ROS_INFO("Set grasp search center to: x=%f, y=%f, z=%f", req.graspsearchcenter.x, req.graspsearchcenter.y, req.graspsearchcenter.z);
 	res.result = true;
 	ROS_INFO("sending back response: [%ld]", (long int)res.result);
@@ -384,6 +384,9 @@ tf::Quaternion quaternionFromVector(tf::Vector3 v2)
   return quatern;
 }
 
+/** \brief create a marker for the closing direction of the grasping pose
+* 
+*/
 visualization_msgs::Marker grasp_closing_direction_marker(double length_line, int seq,
 																			  geometry_msgs::Point gp1,
 																			  geometry_msgs::Point gp2,
@@ -447,6 +450,53 @@ haf_grasping::Grasp buildGraspMsg(grasp_result& grasp_pose)
 	return msg;
 }
 
+sensor_msgs::PointCloud2 get_segmented_cloud(iri_tos_supervoxels::segmented_objects & seg_objs, std::string frame_id)
+{  
+    sensor_msgs::PointCloud2 segmented_objects_msg;
+    pcl::PointCloud<pcl::PointXYZRGB> segmented_objects_cloud;
+
+    //iri_tos_supervoxels::segmented_objects segmented_objects_msg;
+
+    for (int i = 0; i < seg_objs.objects.size(); ++i)
+    {
+      // convert it to pcl
+      pcl::PointCloud<pcl::PointXYZRGB> tmp; // temporary point cloud
+      pcl::fromROSMsg(seg_objs.objects[i],tmp);
+
+      //we now construct manually the point cloud
+      //choose a random color for each segmented object
+      float r,g,b;
+      r = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+      g = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+      b = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+      for (int h = 0; h < tmp.points.size(); ++h)
+      {
+        pcl::PointXYZRGB temp_point;
+        temp_point.x = tmp.points.at(h).x;
+        temp_point.y = tmp.points.at(h).y;
+        temp_point.z = tmp.points.at(h).z;
+        temp_point.r = r*255;
+        temp_point.g = g*255;
+        temp_point.b = b*255;
+        segmented_objects_cloud.points.push_back(temp_point);
+      }
+
+    }
+
+    segmented_objects_cloud.width = segmented_objects_cloud.points.size();
+    segmented_objects_cloud.height = 1;
+    segmented_objects_cloud.is_dense = true;
+
+    pcl::toROSMsg(segmented_objects_cloud,segmented_objects_msg);
+
+    segmented_objects_msg.header.seq = 1;
+    segmented_objects_msg.header.frame_id = frame_id;
+    segmented_objects_msg.header.stamp = ros::Time::now();
+
+    return segmented_objects_msg;
+}
+
+
 //void detectGrasp( const iri_tos_supervoxels::segmented_objectsConstPtr& msg)
 void detectGrasp(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
 {
@@ -459,10 +509,12 @@ void detectGrasp(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
   srv.request.point_cloud = *cloud_msg; 
 
   iri_tos_supervoxels::segmented_objects msg;
+  // segment the point cloud
   if(client.call(srv))
   {
-    msg = srv.response.objects; 
-    //segmented_objects_pub.publish(msg); 
+    msg = srv.response.objects;
+    // reconstruct the point segmented cloud and publish it 
+    segmented_objects_pub.publish(get_segmented_cloud(msg,std::string(cloud_msg->header.frame_id))); 
   }
   else
   {
@@ -494,62 +546,72 @@ void detectGrasp(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
     pcl::PointCloud<pcl::PointXYZRGBA> tmp;
 		pcl::fromROSMsg(tmp_cloud_msg,tmp);
 		pcl::PointXYZRGBA max,min;
-		pcl::getMinMax3D(tmp,min,max);//compute the maximum and minimum coordinates
+		pcl::getMinMax3D(tmp,min,max);//compute the minimum and maximum coordinates
 
 	  //defining the grasp center
-	  geometry_msgs::Point graspsearchcenter;
-	  graspsearchcenter.x = (max.x + min.x)/2;
-	  graspsearchcenter.y = (max.y + min.y)/2;
-	  graspsearchcenter.z = 0.0;
+	  geometry_msgs::Point grasp_search_center;
+	  grasp_search_center.x = (max.x + min.x)/2;
+	  grasp_search_center.y = (max.y + min.y)/2;
+	  grasp_search_center.z = 0.0;
+	  grasp_client.grasp_search_center = grasp_search_center;
 
-	  grasp_client.graspsearchcenter = graspsearchcenter;
+    // defining the zone where to look fot the grasp
 	  grasp_client.grasp_search_size_x = (max.x - min.x) * 1.5 * 100 + 4;//[* 100] is to convert from meter to cm
 	  grasp_client.grasp_search_size_y = (max.y - min.y) * 1.5 * 100 + 4;// 4 bias
 	  
+    // variable to show only the best grasp
 	  grasp_client.show_only_best_grasp = true;
 
+    // compute grasp for the input cloud tmp_cloud_msg
 	  ROS_INFO("Computing the grasp of object labeled as: %d",i);
-	  bool success = grasp_client.get_grasp_cb(tmp_cloud_msg);
 
-	  //bool success = grasp_client.get_grasp_cb(msg->objects[i].points);
-	  if(success)
+	  if(grasp_client.get_grasp_cb(tmp_cloud_msg))
 	  {
 	  	ROS_INFO("Found grasp for object: %d",i);
 	  }
 	  else
 	  	ROS_ERROR("Not possible grasp for object: %d",i);
-
 	  std::cout << std::endl;
 
 	  grasp_result grasp_pose = grasp_client.grasp_;
 	  if(grasp_pose.time) //if it has finished before time out we consider it as valid
 	  {
+      // creating grasping pose  
 	  	tf::Vector3 v2(grasp_pose.av.x,grasp_pose.av.y,-grasp_pose.av.z);
 	  	tf::Quaternion quat_tf = quaternionFromVector(v2);
 	  	geometry_msgs::Quaternion quat;
 	  	quat.x = quat_tf.x();quat.y = quat_tf.y();quat.z = quat_tf.z();quat.w = quat_tf.w();
-	  	geometry_msgs::Pose pose;
+	  	
+      geometry_msgs::Pose pose;
 	  	std::cout << quat_tf.x() << " " << quat_tf.y() << " " << quat_tf.z() << " " << quat_tf.w() << " "
 	  			  << grasp_pose.gp2.x << " " << grasp_pose.gp2.y << " " << grasp_pose.gp2.x << std::endl;		
 	   	pose.orientation = quat;
 	   	pose.position.x = grasp_pose.gcp.x;
 	   	pose.position.y = grasp_pose.gcp.y;
 	   	pose.position.z = grasp_pose.gcp.z;
-
 	   	grasp_poses.poses.push_back(pose);
-	  	closing_direction_markers.markers.push_back(grasp_closing_direction_marker(0.4,i,grasp_pose.gp1,grasp_pose.gp2,grasp_pose.gcp));
 
-	  	grasps_data_msg.grasps.push_back(buildGraspMsg(grasp_pose));
+      // build the Grasp message
+      grasps_data_msg.grasps.push_back(buildGraspMsg(grasp_pose));
+
+      // create closing direction marker
+      closing_direction_markers.markers.push_back(grasp_closing_direction_marker(0.4,i,grasp_pose.gp1,grasp_pose.gp2,grasp_pose.gcp));
 
 	  }
-	}
+	}//exit for
   
+  // fill the header of the PosesArray msg
 	grasp_poses.header.seq = 0;
 	grasp_poses.header.stamp = ros::Time::now();
 	grasp_poses.header.frame_id = base_frame;
+
+  //publishes the poses -> for visualization
 	grasp_poses_pub.publish(grasp_poses);
 
+  //publish closing direction marker -> for visualization
 	grasp_poses_closing_direction_pub.publish(closing_direction_markers);
+
+  //publish the Grasp message -> real output of interest
 	grasps_data_pub.publish(grasps_data_msg);
 
 }
@@ -560,25 +622,29 @@ int main (int argc, char **argv)
   ros::init(argc, argv, "calc_grasppoints_client_sim");
   nh_pointer = new(ros::NodeHandle);
 
+  // parsers -----------
   nh_pointer->param("input_topic_haf",input_topic,INPUT_TOPIC);
-  std::cout << "\n\n input topic: " << input_topic << "\n\n";
+  std::cout << "\n\ninput topic: " << input_topic << "\n\n";
 
   nh_pointer->param("opening_width_scale_marker",opening_width_scale,OPENING_WIDTH_SCALE);
   std::cout << "opening_width_scale: " << opening_width_scale << "\n";  
 
   nh_pointer->param("base_frame", base_frame, BASE_FRAME);
+  //--------------------
 
+  // subscriber - input topic
   ros::Subscriber sub = nh_pointer->subscribe<sensor_msgs::PointCloud2>(input_topic, 1,detectGrasp);
-  //ros::Subscriber sub = nh_pointer->subscribe<iri_tos_supervoxels::segmented_objects>(input_topic, 1,detectGrasp);
   
+  // publishers
   grasp_poses_pub = nh_pointer->advertise<geometry_msgs::PoseArray>("haf_grasping/grasp_poses",1);
   grasp_poses_closing_direction_pub = nh_pointer->advertise<visualization_msgs::MarkerArray>("haf_grasping/grasp_poses_closing_direction",1);
   grasps_data_pub = nh_pointer->advertise<haf_grasping::Grasps>("haf_grasping/grasps_data",1);
-  segmented_objects_pub = nh_pointer->advertise<sensor_msgs::PointCloud2>("/segmented_objects",1);
+  segmented_objects_pub = nh_pointer->advertise<sensor_msgs::PointCloud2>("/segmented_objects/points",1);
 
+  // client - for the object segmentation
   client = nh_pointer->serviceClient<iri_tos_supervoxels::object_segmentation>("/iri_tos_supervoxels_alg/object_segmentation");
 
-
+  // pointer to TransformListener
   pListener = new (tf::TransformListener);
 
   ros::spin();
