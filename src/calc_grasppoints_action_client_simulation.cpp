@@ -59,14 +59,21 @@
 // parsing function
 #include <string>     // std::string, std::stof
 
-
+// global node handle
 ros::NodeHandle* nh_pointer = NULL;
+
+// tf listener
 tf::TransformListener* pListener = NULL;
+
+// client for the tabletop object segmentation
 ros::ServiceClient client;
+
+// publishers
 ros::Publisher grasp_poses_pub, grasp_poses_closing_direction_pub,
+               grasp_poses_approaching_direction_pub,
                grasps_data_pub, segmented_objects_pub;
 
-//-------------------------------------------------
+//----------------- parameters ---------------------
 const std::string INPUT_TOPIC = "/camera/depth_registered/points";
 const std::string BASE_FRAME = "/world";
 const double OPENING_WIDTH_SCALE = 1;
@@ -75,7 +82,7 @@ std::string input_topic, base_frame;
 double opening_width_scale;// scale of the visualization of the closing direction markers
 //------------------------------------------------
 
-/** \struct to retireve in a compact way the grasping parametrrs
+/** \struct to retrieve in a compact way the grasping parametrrs
 */
 struct grasp_result{
 
@@ -344,6 +351,7 @@ bool CCalcGrasppointsClient::set_gripper_width(haf_grasping::GraspPreGripperOpen
 	return res.result;
 }
 
+//---------------- MY FUNCTION ----------------------
 
 /** \brief COmpute the qyaternion needed to rotate the vector v1 (fixed: (1,0,0) for markers)
 * up to vector v2
@@ -384,6 +392,41 @@ tf::Quaternion quaternionFromVector(tf::Vector3 v2)
   return quatern;
 }
 
+/** \brief function to create the approaching direction marker as an arrow
+*/
+visualization_msgs::Marker create_approaching_direction(geometry_msgs::Point & p1,
+														                            geometry_msgs::Point & p2,
+                                                        int seq)
+{
+	visualization_msgs::Marker marker;
+
+	marker.header.frame_id = base_frame;
+	marker.header.stamp = ros::Time::now();
+	marker.header.seq = seq;
+  marker.lifetime = ros::Duration(15.0);
+	char str[20];
+	sprintf(str,"approaching_direction_%d",seq); 
+	marker.ns = str;
+	marker.action = visualization_msgs::Marker::ADD;
+	marker.id = 0; 
+	marker.type = visualization_msgs::Marker::ARROW;
+	marker.color.g = 1.0;
+  marker.color.a = 0.5; 
+
+  // scales
+  marker.scale.x = 0.01; // shaft diameter
+  marker.scale.y = 0.01; // head diameter
+  marker.scale.z = 0.01; // head length
+
+  // add an offset - only for visualziation purposes
+  p1.z = p1.z + 0.005; //put an offset of 0.5 centimeters 
+  marker.points.push_back(p1);
+  marker.points.push_back(p2);
+
+  return marker;
+
+}
+
 /** \brief create a marker for the closing direction of the grasping pose
 * 
 */
@@ -403,27 +446,28 @@ visualization_msgs::Marker grasp_closing_direction_marker(double length_line, in
 	marker.action = visualization_msgs::Marker::ADD;
 	marker.id = 0; 
 	marker.type = visualization_msgs::Marker::CUBE;
-	marker.color.b = 1.0;
-    marker.color.a = 1.0; 
+	marker.color.r = 1.0;
+  marker.color.a = 1.0; 
 
-    double opening_width = sqrt(pow((gp1.x - gp2.x),2) + pow((gp1.z - gp2.z),2) + pow((gp1.z - gp2.z),2)); 
+  double opening_width = sqrt(pow((gp1.x - gp2.x),2) + pow((gp1.z - gp2.z),2) + pow((gp1.z - gp2.z),2)); 
 
-    marker.scale.x = opening_width * opening_width_scale;
-    marker.scale.y = 0.002;
-    marker.scale.z = 0.002;
+  marker.scale.x = opening_width * opening_width_scale;
+  marker.scale.y = 0.002;
+  marker.scale.z = 0.002;
 
-    marker.lifetime = ros::Duration(10.0);
+  marker.lifetime = ros::Duration(15.0);
 
-    marker.pose.position.x = gcp.x;
-    marker.pose.position.y = gcp.y;
-    marker.pose.position.z = gcp.z;
+  marker.pose.position.x = gcp.x;
+  marker.pose.position.y = gcp.y;
+  // add an offset - only for visualziation purposes
+  marker.pose.position.z = gcp.z + 0.005; //put an offset of 0.5 centimeters
 
-    geometry_msgs::Vector3 diff_vector;
-    diff_vector.x = gp1.x-gcp.x;
-    diff_vector.y = gp1.y-gcp.y;
-    diff_vector.z = gp1.z-gcp.z;
+  geometry_msgs::Vector3 diff_vector;
+  diff_vector.x = gp1.x-gcp.x;
+  diff_vector.y = gp1.y-gcp.y;
+  diff_vector.z = gp1.z-gcp.z;
 
-    tf::Vector3 v2(diff_vector.x,diff_vector.y,diff_vector.z);
+  tf::Vector3 v2(diff_vector.x,diff_vector.y,diff_vector.z);
 	tf::Quaternion quat_tf = quaternionFromVector(v2);
 	marker.pose.orientation.x = quat_tf.x();
 	marker.pose.orientation.y = quat_tf.y();
@@ -450,6 +494,8 @@ haf_grasping::Grasp buildGraspMsg(grasp_result& grasp_pose)
 	return msg;
 }
 
+/** \brief Create a point cloud with random color assigned to each segmented object
+*/
 sensor_msgs::PointCloud2 get_segmented_cloud(iri_tos_supervoxels::segmented_objects & seg_objs, std::string frame_id)
 {  
     sensor_msgs::PointCloud2 segmented_objects_msg;
@@ -503,7 +549,7 @@ void detectGrasp(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
 	
 	//ROS_INFO("\n #### %d Objects received ####\n",(int)msg->objects.size());
 	//now we pass all the objects and for each one create a haf_client
-  ROS_INFO("Segmenting the point cloud");
+  std::cout << "Segmenting the point cloud\n";
 
   iri_tos_supervoxels::object_segmentation srv;
   srv.request.point_cloud = *cloud_msg; 
@@ -525,6 +571,7 @@ void detectGrasp(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
 	//---------- Messages  To publish --------------
 	geometry_msgs::PoseArray grasp_poses;
 	visualization_msgs::MarkerArray closing_direction_markers;
+  visualization_msgs::MarkerArray approaching_direction_markers;
 	haf_grasping::Grasps grasps_data_msg;
   //---------------------------------------------	
 
@@ -563,11 +610,11 @@ void detectGrasp(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
 	  grasp_client.show_only_best_grasp = true;
 
     // compute grasp for the input cloud tmp_cloud_msg
-	  ROS_INFO("Computing the grasp of object labeled as: %d",i);
+	  std::cout << "\nComputing the grasp of object labeled as: " << i << std::endl;
 
 	  if(grasp_client.get_grasp_cb(tmp_cloud_msg))
 	  {
-	  	ROS_INFO("Found grasp for object: %d",i);
+	  	std::cout << "Found grasp for object: " << i << " of " <<  msg.objects.size() << " objects.\n";
 	  }
 	  else
 	  	ROS_ERROR("Not possible grasp for object: %d",i);
@@ -597,7 +644,20 @@ void detectGrasp(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
       // create closing direction marker
       closing_direction_markers.markers.push_back(grasp_closing_direction_marker(0.4,i,grasp_pose.gp1,grasp_pose.gp2,grasp_pose.gcp));
 
+      // create approaching direction marker
+      // since we are working only with the vertical direction
+      geometry_msgs::Point p2 = grasp_pose.gcp;
+      p2.z = p2.z + 0.05; // this will affect the length of the arrow
+      approaching_direction_markers.markers.push_back(create_approaching_direction(grasp_pose.gcp,p2,i));
 	  }
+    else
+    {
+      // else fill the vector with an constant grasp message
+
+      // build the Grasp message
+      grasps_data_msg.grasps.push_back(buildGraspMsg(grasp_pose));
+
+    }
 	}//exit for
   
   // fill the header of the PosesArray msg
@@ -610,6 +670,7 @@ void detectGrasp(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
 
   //publish closing direction marker -> for visualization
 	grasp_poses_closing_direction_pub.publish(closing_direction_markers);
+  grasp_poses_approaching_direction_pub.publish(approaching_direction_markers);
 
   //publish the Grasp message -> real output of interest
 	grasps_data_pub.publish(grasps_data_msg);
@@ -638,6 +699,7 @@ int main (int argc, char **argv)
   // publishers
   grasp_poses_pub = nh_pointer->advertise<geometry_msgs::PoseArray>("haf_grasping/grasp_poses",1);
   grasp_poses_closing_direction_pub = nh_pointer->advertise<visualization_msgs::MarkerArray>("haf_grasping/grasp_poses_closing_direction",1);
+  grasp_poses_approaching_direction_pub = nh_pointer->advertise<visualization_msgs::MarkerArray>("haf_grasping/grasp_poses_approaching_direction",1);
   grasps_data_pub = nh_pointer->advertise<haf_grasping::Grasps>("haf_grasping/grasps_data",1);
   segmented_objects_pub = nh_pointer->advertise<sensor_msgs::PointCloud2>("/segmented_objects/points",1);
 
