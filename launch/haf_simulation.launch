@@ -9,7 +9,8 @@
       name="calc_grasppoints_svm_action_client" 
     pkg="haf_grasping" 
     type="calc_grasppoints_client_sim"
-    output="screen">        
+    output="screen">    
+    <param name="input_topic" value="/camera/depth_registered/points"/>    
   </node>
 
   <rosparam param="opening_width_scale_marker">2</rosparam>
