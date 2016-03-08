@@ -494,56 +494,7 @@ haf_grasping::Grasp buildGraspMsg(grasp_result& grasp_pose)
 	return msg;
 }
 
-/** \brief Create a point cloud with random color assigned to each segmented object
-*/
-sensor_msgs::PointCloud2 get_segmented_cloud(iri_tos_supervoxels::segmented_objects & seg_objs, std::string frame_id)
-{  
-    sensor_msgs::PointCloud2 segmented_objects_msg;
-    pcl::PointCloud<pcl::PointXYZRGB> segmented_objects_cloud;
 
-    //iri_tos_supervoxels::segmented_objects segmented_objects_msg;
-
-    for (int i = 0; i < seg_objs.objects.size(); ++i)
-    {
-      // convert it to pcl
-      pcl::PointCloud<pcl::PointXYZRGB> tmp; // temporary point cloud
-      pcl::fromROSMsg(seg_objs.objects[i],tmp);
-
-      //we now construct manually the point cloud
-      //choose a random color for each segmented object
-      float r,g,b;
-      r = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
-      g = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
-      b = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
-      for (int h = 0; h < tmp.points.size(); ++h)
-      {
-        pcl::PointXYZRGB temp_point;
-        temp_point.x = tmp.points.at(h).x;
-        temp_point.y = tmp.points.at(h).y;
-        temp_point.z = tmp.points.at(h).z;
-        temp_point.r = r*255;
-        temp_point.g = g*255;
-        temp_point.b = b*255;
-        segmented_objects_cloud.points.push_back(temp_point);
-      }
-
-    }
-
-    segmented_objects_cloud.width = segmented_objects_cloud.points.size();
-    segmented_objects_cloud.height = 1;
-    segmented_objects_cloud.is_dense = true;
-
-    pcl::toROSMsg(segmented_objects_cloud,segmented_objects_msg);
-
-    segmented_objects_msg.header.seq = 1;
-    segmented_objects_msg.header.frame_id = frame_id;
-    segmented_objects_msg.header.stamp = ros::Time::now();
-
-    return segmented_objects_msg;
-}
-
-
-//void detectGrasp( const iri_tos_supervoxels::segmented_objectsConstPtr& msg)
 void detectGrasp(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
 {
 	
@@ -560,7 +511,7 @@ void detectGrasp(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
   {
     msg = srv.response.objects;
     // reconstruct the point segmented cloud and publish it 
-    segmented_objects_pub.publish(get_segmented_cloud(msg,std::string(cloud_msg->header.frame_id))); 
+    segmented_objects_pub.publish(srv.response.segmented_cloud); 
   }
   else
   {
@@ -663,17 +614,17 @@ void detectGrasp(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
   // fill the header of the PosesArray msg
 	grasp_poses.header.seq = 0;
 	grasp_poses.header.stamp = ros::Time::now();
-	grasp_poses.header.frame_id = base_frame;
+  grasp_poses.header.frame_id = base_frame;
 
   //publishes the poses -> for visualization
-	grasp_poses_pub.publish(grasp_poses);
+  grasp_poses_pub.publish(grasp_poses);
 
   //publish closing direction marker -> for visualization
-	grasp_poses_closing_direction_pub.publish(closing_direction_markers);
+  grasp_poses_closing_direction_pub.publish(closing_direction_markers);
   grasp_poses_approaching_direction_pub.publish(approaching_direction_markers);
 
   //publish the Grasp message -> real output of interest
-	grasps_data_pub.publish(grasps_data_msg);
+  grasps_data_pub.publish(grasps_data_msg);
 
 }
 
