@@ -1,3 +1,9 @@
+**IMPORTANT:** This Package is a fork of http://wiki.ros.org/haf_grasping, I have added just the client node
+calc_grasppoints_action_client_simulation.cpp for my study of the HAF algorithm, and added a launch file. 
+All the rest is the same as provided by the author of the haf_grasping package. 
+
+In the following the original readme:
+
 ==========================================================
 ==               PACKAGE: haf_grasping   	        ==
 ==========================================================
