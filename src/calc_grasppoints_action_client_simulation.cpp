@@ -500,7 +500,7 @@ void detectGrasp(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
 	
 	//ROS_INFO("\n #### %d Objects received ####\n",(int)msg->objects.size());
 	//now we pass all the objects and for each one create a haf_client
-  std::cout << "Segmenting the point cloud\n";
+  std::cout << "Segmenting the point cloud_\n";
 
   iri_tos_supervoxels::object_segmentation srv;
   srv.request.point_cloud = *cloud_msg; 
@@ -509,7 +509,7 @@ void detectGrasp(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
   // segment the point cloud
   if(client.call(srv))
   {
-    //msg = srv.response.objects;
+    msg = srv.response.objects;
     // reconstruct the point segmented cloud and publish it 
     sensor_msgs::PointCloud2 segmented_objects_msg;
     pcl::PointCloud<pcl::PointXYZRGB> segmented_objects_cloud;
