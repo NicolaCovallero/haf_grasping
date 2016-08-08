@@ -1,6 +1,5 @@
 /*
- * David Fischinger - Vienna University of Technology
- * March 2015
+ * Nicola Covallero - This code is an adaption of the file calc_grasppoints_action_client.cpp to make it fits to my purposes.
  *
  * ** Grasp Action Client - for Testing **
  *
