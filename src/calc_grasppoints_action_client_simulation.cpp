@@ -1,14 +1,5 @@
 /*
  * Nicola Covallero - This code is an adaption of the file calc_grasppoints_action_client.cpp to make it fits to my purposes.
- *
- * ** Grasp Action Client - for Testing **
- *
- * This node is serving as a client for the calculation of grasp points
- * based on the action server for grasp calculation.
- * This nodes subscribes to the topic /haf_grasping/depth_registered/single_cloud/points_in_lcs (lcs: local coordinate system)
- * and receives (single) point clouds (in a local coordinate system where z is perpendicular to the floor).
- * The node sends the point cloud as an action server goal and receives the grasp result.
- *
  */
 
 
